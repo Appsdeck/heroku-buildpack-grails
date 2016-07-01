@@ -54,7 +54,7 @@ Total 73 (delta 2), reused 0 (delta 0)
 
 ### Auto-detection
 
-Scalingo auto-detects Grails apps by the existence of the `grails-app` directory in the project root and the `application.properties`  file is also expected to exist in the root directory. 
+Scalingo auto-detects Grails apps by the existence of the `grails-app` directory in the project root and the `application.properties`  file is also expected to exist in the root directory.
 
 ### Using a Customized (Forked) Build Pack
 

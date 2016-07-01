@@ -3,27 +3,27 @@
 . ${BUILDPACK_TEST_RUNNER_HOME}/lib/test_utils.sh
 
 GRAILS_TEST_CACHE="/tmp/grails_test_cache"
-DEFAULT_GRAILS_VERSION="1.3.7"
+DEFAULT_GRAILS_VERSION="2.2.1"
 DEFAULT_JETTY_RUNNER_VERSION="7.5.4.v20111024"
-DEFAULT_WEBAPP_RUNNER_VERSION="7.0.40.0"
+DEFAULT_WEBAPP_RUNNER_VERSION="7.0.57.2"
 
 installGrails()
 {
   local grailsVersion=${1:-${DEFAULT_GRAILS_VERSION}}
-  local grailsUrl="http://dist.springframework.org.s3.amazonaws.com/release/GRAILS/grails-${grailsVersion}.zip"
+  local grailsUrl="https://github.com/grails/grails-core/releases/download/v${grailsVersion}/grails-${grailsVersion}.zip"
 
   if [ ! -d ${GRAILS_TEST_CACHE}/${grailsVersion}/.grails ]; then
     mkdir -p ${GRAILS_TEST_CACHE}/${grailsVersion}
     pwd="$(pwd)"
     cd ${GRAILS_TEST_CACHE}/${grailsVersion}
-    curl --silent --max-time 150 --location ${grailsUrl} -o grails.zip
+    curl --silent --location ${grailsUrl} -o grails.zip
     jar xf grails.zip
     mv grails-${grailsVersion} .grails
     chmod +x .grails/bin/grails
     cd ${pwd}
   fi
 
-  [ -z "${JAVA_HOME}" ] && export JAVA_HOME=/usr/lib/jvm/java-6-openjdk
+  [ -z "${JAVA_HOME}" ] && export JAVA_HOME=/usr/lib/jvm/java-7-openjdk-amd64
 }
 
 getInstalledGrailsVersion()
@@ -41,6 +41,14 @@ createGrailsApp()
     pwd="$(pwd)"
     cd ${GRAILS_TEST_CACHE}/${grailsVersion}
     .grails/bin/grails create-app test-app >/dev/null
+
+    # fix bug in grails wrapper
+    if [ -f test-app/wrapper/grails-wrapper.properties ]; then
+      sed -i.bak \
+        s/http:\\\/\\\/dist.springframework.org.s3.amazonaws.com\\\/release\\\/GRAILS/https:\\\/\\\/github.com\\\/grails\\\/grails-core\\\/releases\\\/download\\\/v${grailsVersion}/g \
+        test-app/wrapper/grails-wrapper.properties
+    fi
+
     cd ${pwd}
   fi
 
@@ -110,6 +118,7 @@ testCompile_Version_1_3_7()
 {
   local grailsVersion="1.3.7"
   createGrailsApp ${grailsVersion}
+  echo "java.runtime.version=1.6" > ${BUILD_DIR}/system.properties
   assertTrue  "Precondition: application.properties should exist" "[ -f ${BUILD_DIR}/application.properties ]"
   assertFalse "Precondition: Grails should not be installed" "[ -d ${CACHE_DIR}/.grails ]"
 
@@ -138,7 +147,23 @@ testCompile_Version_2_0_0()
   assertCaptured "Installing Grails ${grailsVersion}"
   assertTrue "Grails should have been installed" "[ -d ${CACHE_DIR}/.grails ]"
   assertEquals "Correct Grails version should have been installed" "${grailsVersion}" "$(getInstalledGrailsVersion)"
-  assertCaptured "Grails non-1.3.7 apps should specify -plain-output flag" "grails -plain-output -Divy.default.ivy.user.dir=${CACHE_DIR} war"
+  assertCaptured "Grails non-1.3.7 apps should specify -plain-output flag" "grails  -plain-output -Divy.default.ivy.user.dir=${CACHE_DIR} war"
+  assertTrue "Cache directory should have been created" "[ -d ${CACHE_DIR}/.grails_cache ]"
+}
+
+testCompile_Version_2_5_2()
+{
+  local grailsVersion="2.5.2"
+  createGrailsApp ${grailsVersion}
+  assertTrue  "Precondition: application.properties should exist" "[ -f ${BUILD_DIR}/application.properties ]"
+  assertFalse "Precondition: Grails should not be installed" "[ -d ${CACHE_DIR}/.grails ]"
+
+  compile
+
+  assertCapturedSuccess
+  assertCaptured "Grails app was not detect" "Grails ${grailsVersion} app detected"
+  assertFalse "Grails should not been installed" "[ -d ${CACHE_DIR}/.grails ]"
+  assertCaptured "Grails non-1.3.7 apps should specify -plain-output flag" "./grailsw  -plain-output -Divy.default.ivy.user.dir=${CACHE_DIR} war"
   assertTrue "Cache directory should have been created" "[ -d ${CACHE_DIR}/.grails_cache ]"
 }
 
@@ -154,13 +179,14 @@ testCompile_With_Wrapper() {
   assertCapturedSuccess
   assertCaptured "Grails ${grailsVersion} app detected"
   assertFalse "Grails should not been installed" "[ -d ${CACHE_DIR}/.grails ]"
-  assertCaptured "Grails non-1.3.7 apps should specify -plain-output flag" "./grailsw -plain-output -Divy.default.ivy.user.dir=${CACHE_DIR} war"
+  assertCaptured "Grails non-1.3.7 apps should specify -plain-output flag" "./grailsw  -plain-output -Divy.default.ivy.user.dir=${CACHE_DIR} war"
   assertTrue "Cache directory should have been created" "[ -d ${CACHE_DIR}/.grails_cache ]"
 }
 
 testCompile_VersionUpgrade()
 {
   local oldGrailsVersion="1.3.7"
+  echo "java.runtime.version=1.6" > ${BUILD_DIR}/system.properties
   createGrailsApp ${oldGrailsVersion}
 
   compile
@@ -211,8 +237,9 @@ testCompile_Version_Unknown()
 
 testJettyRunnerLegacyReinstallation()
 {
-  createGrailsApp
+  createGrailsApp "1.3.7"
   echo "vendored:${DEFAULT_JETTY_RUNNER_VERSION}" > ${CACHE_DIR}/jettyVersion
+  echo "java.runtime.version=1.6" >> ${BUILD_DIR}/system.properties
   assertFalse "Precondition: No server directory should be present" "[ -d ${BUILD_DIR}/server ]"
   assertTrue  "Precondition: Jetty Runner vendor file should be in cache" "[ -f ${CACHE_DIR}/jettyVersion ]"
 
@@ -229,8 +256,9 @@ testJettyRunnerLegacyReinstallation()
 
 testJettyRunnerSelection()
 {
-  createGrailsApp
+  createGrailsApp "1.3.7"
   echo "grails.application.container=jetty" > ${BUILD_DIR}/system.properties
+  echo "java.runtime.version=1.6" >> ${BUILD_DIR}/system.properties
   assertFalse "Precondition: No server directory should be present" "[ -d ${BUILD_DIR}/server ]"
   assertTrue  "Precondition: system.properties file should be in build dir" "[ -f ${BUILD_DIR}/system.properties ]"
 
@@ -247,9 +275,10 @@ testJettyRunnerSelection()
 
 testWebappRunnerInstallation()
 {
-  createGrailsApp
+  createGrailsApp "1.3.7"
+  echo "java.runtime.version=1.6" > ${BUILD_DIR}/system.properties
   assertFalse "Precondition: No server directory should be present" "[ -d ${BUILD_DIR}/server ]"
-  assertFalse "Precondition: Jetty Runner vendor file should not be in cache" "[ -f ${CACHE_DIR}/jettyVersion ]"  
+  assertFalse "Precondition: Jetty Runner vendor file should not be in cache" "[ -f ${CACHE_DIR}/jettyVersion ]"
 
   compile
 
@@ -264,7 +293,8 @@ testWebappRunnerInstallation()
 
 testJettyRunnerInstallationSkippedIfServerProvided()
 {
-  createGrailsApp
+  createGrailsApp "1.3.7"
+  echo "java.runtime.version=1.6" > ${BUILD_DIR}/system.properties
   mkdir -p ${BUILD_DIR}/server
   assertTrue "Precondition: Custom server should be included in app" "[ -d ${BUILD_DIR}/server ]"
 
@@ -287,13 +317,13 @@ testCompliationFailsWhenApplicationPropertiesIsMissing()
 
   compile
 
-  assertCapturedError "File not found: application.properties. This file is required. Build failed."
+  assertCapturedError "File not found: application.properties. This file is required."
 }
 
 testCheckBuildStatus()
 {
-  createGrailsApp
-  rm -r ${BUILD_DIR}/grails-app/* # delete contents of app to pass detection, but fail the build
+  createGrailsApp "1.3.7"
+  rm -rf ${BUILD_DIR}/grails-app/* # delete contents of app to pass detection, but fail the build
 
   compile
 
