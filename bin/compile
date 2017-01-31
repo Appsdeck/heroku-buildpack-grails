@@ -23,6 +23,10 @@ curl --silent --location $JVM_COMMON_BUILDPACK | tar xzm -C /tmp/jvm-common --st
 
 export_env_dir $ENV_DIR
 
+if [ "$STACK" = "scalingo" ] ; then
+  export STACK="cedar-14"
+fi
+
 GRAILS_DIR=".grails"
 GRAILS_CMD="grails"
 
